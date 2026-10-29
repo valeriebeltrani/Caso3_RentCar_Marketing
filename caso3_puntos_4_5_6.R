@@ -223,3 +223,127 @@ g_cor <- ggplot(cor_largo, aes(x = Var1, y = Var2, fill = Correlacion)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 print(g_cor)
 ggsave("resultados/figuras/4_matriz_correlaciones.png", g_cor, width = 10, height = 8, dpi = 300)
+
+# PUNTO 5. REGRESIONES SIMPLES
+# Sales = b0 + b1 * Costo del canal + e
+
+resumen_lm <- function(m, nombre) {
+  s  <- summary(m)
+  co <- s$coefficients
+  ci <- confint(m, level = 0.95)
+  f  <- s$fstatistic
+  tibble(Modelo      = nombre,
+         Termino     = rownames(co),
+         Coeficiente = co[, 1],
+         Error_Est   = co[, 2],
+         t           = co[, 3],
+         p_valor     = co[, 4],
+         IC95_inf    = ci[, 1],
+         IC95_sup    = ci[, 2],
+         R2          = s$r.squared,
+         R2_ajustado = s$adj.r.squared,
+         F           = unname(f["value"]),
+         p_valor_F   = unname(pf(f["value"], f["numdf"], f["dendf"], lower.tail = FALSE)),
+         N           = nobs(m))
+}
+
+modelos_simples <- lapply(canales_cost, function(x) lm(reformulate(x, response = "Sales"), data = base))
+names(modelos_simples) <- canales_cost
+
+for (x in canales_cost) {
+  cat("\n--- Sales ~", x, "---\n")
+  print(summary(modelos_simples[[x]]))
+  print(confint(modelos_simples[[x]]))
+}
+
+tabla_simples <- bind_rows(lapply(canales_cost, function(x)
+  resumen_lm(modelos_simples[[x]], paste("Sales ~", x))))
+write_csv(tabla_simples, "resultados/punto5_regresiones_simples.csv")
+
+print(as.data.frame(tabla_simples |> filter(Termino != "(Intercept)") |>
+                      select(Termino, Coeficiente, IC95_inf, IC95_sup, t, p_valor, R2) |>
+                      mutate(across(where(is.numeric), ~ round(.x, 4)))))
+
+g_pend_simples <- tabla_simples |>
+  filter(Termino != "(Intercept)") |>
+  mutate(Canal = factor(Termino, levels = canales_cost,
+                        labels = c("Amazon DSP", "Amazon Search", "Amazon Sponsored"))) |>
+  ggplot(aes(x = Canal, y = Coeficiente, ymin = IC95_inf, ymax = IC95_sup)) +
+  geom_pointrange(color = "#1f4e79") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Pendientes de las regresiones simples (IC 95%)", x = NULL, y = "b1") +
+  theme_minimal(base_size = 11)
+print(g_pend_simples)
+ggsave("resultados/figuras/5_pendientes_simples.png", g_pend_simples, width = 7, height = 4.5, dpi = 300)
+
+
+
+
+# PUNTO 6. REGRESIÓN MÚLTIPLE CON CONTROLES
+# KPI = b0 + b1 DSP + b2 Search + b3 Sponsored + controles + e
+
+# 6.1 Revisión de los controles candidatos
+controles_cand <- c("Trends_Brand", "Trends_NonBrand", "GASREGW", "UNRATE", "ICSA", "SP500", "WEI")
+print(round(cor(base[, controles_cand]), 2))
+
+# VIF = 1 / (1 - R2) de regresar cada variable contra las demás
+calc_vif <- function(df) {
+  sapply(names(df), function(v) {
+    otras <- setdiff(names(df), v)
+    r2 <- summary(lm(reformulate(otras, response = v), data = df))$r.squared
+    1 / (1 - r2)
+  })
+}
+
+# Modelo con todos los controles
+m_todos <- lm(reformulate(c(canales_cost, controles_cand), response = "Sales"), data = base)
+print(summary(m_todos))
+print(round(calc_vif(base[, c(canales_cost, controles_cand)]), 2))
+
+# Controles finales:
+# Trends_Brand sale (corr. 0.80 con Trends_NonBrand y puede depender de la pauta)
+# UNRATE sale (mensual, casi no varía; se deja ICSA que es semanal)
+# SP500 sale (se deja WEI; SP500 sube el VIF de Search sin mejorar el R2 ajustado)
+controles_finales <- c("Trends_NonBrand", "GASREGW", "ICSA", "WEI")
+
+vif_final <- calc_vif(base[, c(canales_cost, controles_finales)])
+print(round(vif_final, 2))
+write_csv(tibble(Variable = names(vif_final), VIF = vif_final), "resultados/punto6_vif_modelo_final.csv")
+
+
+# 6.2 Modelos finales para Sales y Orders
+formula_sales  <- reformulate(c(canales_cost, controles_finales), response = "Sales")
+formula_orders <- reformulate(c(canales_cost, controles_finales), response = "Orders")
+
+m_sales  <- lm(formula_sales,  data = base)
+m_orders <- lm(formula_orders, data = base)
+
+cat("\n--- Modelo Sales ---\n")
+print(summary(m_sales))
+print(confint(m_sales))
+
+cat("\n--- Modelo Orders ---\n")
+print(summary(m_orders))
+print(confint(m_orders))
+
+tabla_multiples <- bind_rows(resumen_lm(m_sales,  "Sales"),
+                             resumen_lm(m_orders, "Orders"))
+write_csv(tabla_multiples, "resultados/punto6_regresiones_multiples.csv")
+
+# Orders por cada 1.000 de costo
+print(round(coef(m_orders)[canales_cost] * 1000, 3))
+
+# Simple vs. múltiple
+comparacion <- tibble(
+  Canal            = canales_cost,
+  Simple           = sapply(canales_cost, function(x) coef(modelos_simples[[x]])[x]),
+  Multiple         = coef(m_sales)[canales_cost],
+  p_valor_Multiple = summary(m_sales)$coefficients[canales_cost, 4])
+print(as.data.frame(mutate(comparacion, across(where(is.numeric), ~ round(.x, 4)))))
+write_csv(comparacion, "resultados/punto6_comparacion_simple_multiple.csv")
+
+
+# 6.3 Sensibilidad: agregando el costo de Google
+m_sales_google <- lm(reformulate(c(canales_cost, controles_finales, "Google_Cost"),
+                                 response = "Sales"), data = base)
+print(summary(m_sales_google))
