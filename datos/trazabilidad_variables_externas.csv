@@ -1,0 +1,6 @@
+variable,concepto,termino_o_codigo,url,entidad,cobertura,frecuencia_original,agregacion_alineacion,fecha_consulta,config_trends
+Trends_Brand,Interés de búsqueda de marca (índice relativo 0-100),Enterprise Rent-A-Car,https://trends.google.com/trends/,Google,Estados Unidos,Semanal (dom-sáb),Se une por fecha exacta de inicio de semana,2026-10-28,geo=US; rango=2024-01-07 2026-08-08; categoría=0 (todas); tipo=web; descarga separada
+Trends_NonBrand,Interés de búsqueda genérica de alquiler de vehículos,car rental,https://trends.google.com/trends/,Google,Estados Unidos,Semanal (dom-sáb),Se une por fecha exacta de inicio de semana,2026-10-28,geo=US; rango=2024-01-07 2026-08-08; categoría=0 (todas); tipo=web; descarga separada
+GASREGW,Precio gasolina regular (USD/galón),GASREGW,https://fred.stlouisfed.org/series/GASREGW,U.S. EIA vía FRED,Estados Unidos,Semanal,Último valor publicado a la fecha de Week (rolling join),2026-10-28,NA
+UNRATE,Tasa de desempleo (%),UNRATE,https://fred.stlouisfed.org/series/UNRATE,U.S. BLS vía FRED,Estados Unidos,Mensual,Valor del mes ya publicado a la fecha de Week (rezago de publicación),2026-10-28,NA
+ICSA,Solicitudes iniciales de desempleo,ICSA,https://fred.stlouisfed.org/series/ICSA,U.S. DOL vía FRED,Estados Unidos,Semanal,Último valor publicado a la fecha de Week (rolling join),2026-10-28,NA
